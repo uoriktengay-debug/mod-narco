@@ -16,4 +16,4 @@
 
 ## Команды
 /biz — твой бизнес, /biz hire courier, /biz hire artist, /biz color red|blue|green|black,
-/bail — залог в тюрьме, /heat <0-100> — тест (нужен оператор).
+/bail — залог в тюрьме, /heat <0-100> — тест (нужен оператор), /network — статистика продаж и клиентов.

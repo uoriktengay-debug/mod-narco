@@ -74,6 +74,14 @@ public final class ExpansionState extends PersistentState {
         return preferredSupplierByCustomer.get(customerId);
     }
 
+    public int customersOwnedBy(UUID supplierId) {
+        int count = 0;
+        for (UUID owner : preferredSupplierByCustomer.values()) {
+            if (supplierId.equals(owner)) count++;
+        }
+        return count;
+    }
+
     /**
      * Records units successfully sold to a specific villager.
      * A customer starts preferring a supplier at 5 sold units. To take a customer

@@ -1,6 +1,11 @@
 package com.narcos.expansion;
 
+import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.minecraft.server.command.CommandManager;
+import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.text.Text;
+import net.minecraft.util.Formatting;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.passive.WanderingTraderEntity;
@@ -22,6 +27,21 @@ public final class ExpansionGame {
     private ExpansionGame() { }
 
     public static void init() {
+        CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
+                dispatcher.register(CommandManager.literal("network").executes(context -> {
+                    ServerPlayerEntity player = context.getSource().getPlayerOrThrow();
+                    ExpansionState state = ExpansionState.of(context.getSource().getServer());
+                    int sales = state.salesForPlayer(player.getUuid());
+                    int customers = state.customersOwnedBy(player.getUuid());
+                    player.sendMessage(Text.literal("=== Твоя сеть сбыта ===")
+                            .formatted(Formatting.GOLD), false);
+                    player.sendMessage(Text.literal("Продано за всё время: " + sales + " / 500"), false);
+                    player.sendMessage(Text.literal("Постоянных клиентов: " + customers), false);
+                    player.sendMessage(Text.literal("Для высшей меры: 10-я судимость и 500+ продаж.")
+                            .formatted(Formatting.DARK_RED), false);
+                    return 1;
+                })));
+
         UseBlockCallback.EVENT.register((player, world, hand, hit) -> {
             if (!world.isClient && world.getBlockState(hit.getBlockPos()).isOf(ExpansionContent.LAB_BENCH)
                     && player instanceof ServerPlayerEntity) {
