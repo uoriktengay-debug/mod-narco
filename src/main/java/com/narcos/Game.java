@@ -423,7 +423,7 @@ public class Game {
     }
 
     static void setSold(Entity e, int n) {
-        for (String t : new ArrayList<>(e.getCommandTags())) if (t.startsWith("nsold_")) e.removeCommandTag(t);
+        for (String t : new ArrayList<>(e.getCommandTags())) if (t.startsWith("nsold_")) e.removeScoreboardTag(t);
         e.addCommandTag("nsold_" + n);
     }
 
