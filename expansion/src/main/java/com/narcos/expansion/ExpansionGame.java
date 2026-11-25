@@ -7,6 +7,7 @@ import net.minecraft.entity.passive.WanderingTraderEntity;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
+import net.minecraft.registry.Registries;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
@@ -54,8 +55,8 @@ public final class ExpansionGame {
         for (WanderingTraderEntity trader : world.getEntitiesByClass(WanderingTraderEntity.class, area,
                 entity -> entity.getCommandTags().contains("narcos_dealer"))) {
             TradeOfferList offers = trader.getOffers();
-            addOfferIfMissing(offers, ExpansionContent.LAB_MARKER, 12, 4);
-            addOfferIfMissing(offers, ExpansionContent.LAB_BENCH, 10, 1);
+            addOfferIfMissing(offers, Registries.ITEM.get(ExpansionContent.id("lab_marker")), 12, 4);
+            addOfferIfMissing(offers, Registries.ITEM.get(ExpansionContent.id("lab_bench")), 10, 1);
             addOfferIfMissing(offers, ExpansionContent.SCIENTIST_CONTRACT, 6, 1);
         }
     }
