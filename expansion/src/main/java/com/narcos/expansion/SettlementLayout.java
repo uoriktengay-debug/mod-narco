@@ -8,7 +8,7 @@ import net.minecraft.util.math.BlockPos;
 
 import java.util.Random;
 
-final class SettlementLayout {
+public final class SettlementLayout {
     enum Type {
         CAPITAL("столица", 42 * 16),
         CITY("город", 4 * 16),
@@ -78,7 +78,7 @@ final class SettlementLayout {
         return Math.round(Math.sqrt(dx * dx + dz * dz));
     }
 
-    static void sendInfo(ServerPlayerEntity player) {
+    public static void sendInfo(ServerPlayerEntity player) {
         ServerWorld world = player.getServerWorld();
         BlockPos pos = player.getBlockPos();
         Type current = typeAt(world, pos.getX(), pos.getZ());
