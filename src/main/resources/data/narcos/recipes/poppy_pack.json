@@ -1,0 +1,21 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    {
+      "item": "narcos:poppy_pod"
+    },
+    {
+      "item": "narcos:poppy_pod"
+    },
+    {
+      "item": "narcos:poppy_pod"
+    },
+    {
+      "item": "narcos:poppy_pod"
+    }
+  ],
+  "result": {
+    "item": "narcos:poppy_pack"
+  }
+}

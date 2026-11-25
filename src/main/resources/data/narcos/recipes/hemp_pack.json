@@ -1,0 +1,21 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    {
+      "item": "narcos:hemp_leaf"
+    },
+    {
+      "item": "narcos:hemp_leaf"
+    },
+    {
+      "item": "narcos:hemp_leaf"
+    },
+    {
+      "item": "narcos:hemp_leaf"
+    }
+  ],
+  "result": {
+    "item": "narcos:hemp_pack"
+  }
+}
