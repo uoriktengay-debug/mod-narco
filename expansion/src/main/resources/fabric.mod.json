@@ -4,10 +4,14 @@
   "version": "${version}",
   "name": "Narcos: Dealer - Expansion",
   "description": "Дополнение к Narcos: Dealer: города, дополнительные здания и лаборатории.",
-  "authors": ["You"],
+  "authors": [
+    "You"
+  ],
   "environment": "*",
   "entrypoints": {
-    "main": ["com.narcos.expansion.NarcosExpansion"]
+    "main": [
+      "com.narcos.expansion.NarcosExpansion"
+    ]
   },
   "depends": {
     "fabricloader": ">=0.15.0",
@@ -15,5 +19,8 @@
     "java": ">=17",
     "fabric-api": "*",
     "narcos": ">=1.0.0"
-  }
+  },
+  "mixins": [
+    "narcos_expansion.mixins.json"
+  ]
 }

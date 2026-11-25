@@ -1,0 +1,13 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.narcos.expansion.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "mixins": [
+    "MainGameMixin",
+    "CapitalPunishmentMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

@@ -13,11 +13,15 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-/** Persistent addon data: lab ownership, scientists and generated regions. */
+/** Persistent addon data: lab ownership, scientists, generated regions and sales competition. */
 public final class ExpansionState extends PersistentState {
     private final Map<String, Integer> scientistsByLab = new HashMap<>();
     private final Map<String, UUID> labOwners = new HashMap<>();
     private final Set<String> builtRegions = new HashSet<>();
+
+    private final Map<UUID, Integer> salesByPlayer = new HashMap<>();
+    private final Map<UUID, Map<UUID, Integer>> salesByCustomer = new HashMap<>();
+    private final Map<UUID, UUID> preferredSupplierByCustomer = new HashMap<>();
 
     public static ExpansionState of(MinecraftServer server) {
         return server.getOverworld().getPersistentStateManager()
@@ -62,6 +66,44 @@ public final class ExpansionState extends PersistentState {
         if (builtRegions.add(key)) markDirty();
     }
 
+    public int salesForPlayer(UUID playerId) {
+        return salesByPlayer.getOrDefault(playerId, 0);
+    }
+
+    /**
+     * Records units successfully sold to a specific villager.
+     * A customer starts preferring a supplier at 5 sold units. To take a customer
+     * from an existing supplier, a competitor must beat that supplier by 5 units.
+     *
+     * @return true only when the customer's preferred supplier changed to seller.
+     */
+    public boolean recordSale(UUID seller, UUID customer, int units) {
+        if (units <= 0) return false;
+
+        salesByPlayer.merge(seller, units, Integer::sum);
+        Map<UUID, Integer> customerScores =
+                salesByCustomer.computeIfAbsent(customer, ignored -> new HashMap<>());
+        int sellerScore = customerScores.merge(seller, units, Integer::sum);
+
+        UUID incumbent = preferredSupplierByCustomer.get(customer);
+        boolean converted = false;
+        if (incumbent == null) {
+            if (sellerScore >= 5) {
+                preferredSupplierByCustomer.put(customer, seller);
+                converted = true;
+            }
+        } else if (!incumbent.equals(seller)) {
+            int incumbentScore = customerScores.getOrDefault(incumbent, 0);
+            if (sellerScore >= incumbentScore + 5) {
+                preferredSupplierByCustomer.put(customer, seller);
+                converted = true;
+            }
+        }
+
+        markDirty();
+        return converted;
+    }
+
     @Override
     public NbtCompound writeNbt(NbtCompound nbt) {
         NbtList labs = new NbtList();
@@ -86,6 +128,49 @@ public final class ExpansionState extends PersistentState {
         NbtList regions = new NbtList();
         for (String region : builtRegions) regions.add(NbtString.of(region));
         nbt.put("built_regions", regions);
+
+        NbtList playerSales = new NbtList();
+        for (Map.Entry<UUID, Integer> entry : salesByPlayer.entrySet()) {
+            NbtCompound sale = new NbtCompound();
+            sale.putString("player", entry.getKey().toString());
+            sale.putInt("units", entry.getValue());
+            playerSales.add(sale);
+        }
+        nbt.put("player_sales", playerSales);
+
+        NbtList customerSales = new NbtList();
+        for (Map.Entry<UUID, Map<UUID, Integer>> customerEntry : salesByCustomer.entrySet()) {
+            NbtCompound customer = new NbtCompound();
+            customer.putString("customer", customerEntry.getKey().toString());
+
+            UUID preferred = preferredSupplierByCustomer.get(customerEntry.getKey());
+            if (preferred != null) customer.putString("preferred", preferred.toString());
+
+            NbtList scores = new NbtList();
+            for (Map.Entry<UUID, Integer> score : customerEntry.getValue().entrySet()) {
+                NbtCompound item = new NbtCompound();
+                item.putString("player", score.getKey().toString());
+                item.putInt("units", score.getValue());
+                scores.add(item);
+            }
+            customer.put("scores", scores);
+            customerSales.add(customer);
+        }
+        nbt.put("customer_sales", customerSales);
+
+        // Persist customers that have a preferred supplier but no score entry (defensive).
+        NbtList preferredOnly = new NbtList();
+        for (Map.Entry<UUID, UUID> entry : preferredSupplierByCustomer.entrySet()) {
+            if (salesByCustomer.containsKey(entry.getKey())) continue;
+            NbtCompound customer = new NbtCompound();
+            customer.putString("customer", entry.getKey().toString());
+            customer.putString("preferred", entry.getValue().toString());
+            customer.put("scores", new NbtList());
+            preferredOnly.add(customer);
+        }
+        if (!preferredOnly.isEmpty()) {
+            for (int i = 0; i < preferredOnly.size(); i++) customerSales.add(preferredOnly.getCompound(i));
+        }
         return nbt;
     }
 
@@ -115,6 +200,44 @@ public final class ExpansionState extends PersistentState {
             NbtList regions = nbt.getList("built_regions", NbtElement.STRING_TYPE);
             for (int i = 0; i < regions.size(); i++) {
                 state.builtRegions.add(regions.getString(i));
+            }
+        }
+
+        if (nbt.contains("player_sales", NbtElement.LIST_TYPE)) {
+            NbtList playerSales = nbt.getList("player_sales", NbtElement.COMPOUND_TYPE);
+            for (int i = 0; i < playerSales.size(); i++) {
+                NbtCompound sale = playerSales.getCompound(i);
+                try {
+                    UUID player = UUID.fromString(sale.getString("player"));
+                    state.salesByPlayer.put(player, Math.max(0, sale.getInt("units")));
+                } catch (IllegalArgumentException ignored) {
+                    // Ignore invalid player UUID.
+                }
+            }
+        }
+
+        if (nbt.contains("customer_sales", NbtElement.LIST_TYPE)) {
+            NbtList customers = nbt.getList("customer_sales", NbtElement.COMPOUND_TYPE);
+            for (int i = 0; i < customers.size(); i++) {
+                NbtCompound customer = customers.getCompound(i);
+                try {
+                    UUID customerId = UUID.fromString(customer.getString("customer"));
+                    String preferred = customer.getString("preferred");
+                    if (!preferred.isEmpty()) {
+                        state.preferredSupplierByCustomer.put(customerId, UUID.fromString(preferred));
+                    }
+
+                    Map<UUID, Integer> scores = new HashMap<>();
+                    NbtList entries = customer.getList("scores", NbtElement.COMPOUND_TYPE);
+                    for (int j = 0; j < entries.size(); j++) {
+                        NbtCompound entry = entries.getCompound(j);
+                        UUID player = UUID.fromString(entry.getString("player"));
+                        scores.put(player, Math.max(0, entry.getInt("units")));
+                    }
+                    if (!scores.isEmpty()) state.salesByCustomer.put(customerId, scores);
+                } catch (IllegalArgumentException ignored) {
+                    // Ignore invalid customer or supplier UUID.
+                }
             }
         }
 
