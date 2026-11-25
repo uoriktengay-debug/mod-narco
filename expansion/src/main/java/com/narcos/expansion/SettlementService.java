@@ -134,7 +134,27 @@ public final class SettlementService {
 
         if (base == null) return false;
         buildBuilding(world, base, floors, tier);
+        spawnResident(world, base);
         return true;
+    }
+
+    /**
+     * Adds one permanent resident to the newly generated expansion building.
+     * AI is disabled so the resident remains inside instead of wandering away.
+     */
+    private static void spawnResident(ServerWorld world, BlockPos base) {
+        VillagerEntity resident = net.minecraft.entity.EntityType.VILLAGER.create(world);
+        if (resident == null) return;
+
+        BlockPos spawn = base.add(0, 1, 0);
+        resident.refreshPositionAndAngles(
+                spawn.getX() + 0.5, spawn.getY(), spawn.getZ() + 0.5, 0.0f, 0.0f);
+        resident.setCustomName(Text.literal("Жилец дома").formatted(Formatting.GOLD));
+        resident.setCustomNameVisible(true);
+        resident.setPersistent();
+        resident.setAiDisabled(true);
+        resident.addCommandTag("narcos_expansion_house_resident");
+        world.spawnEntity(resident);
     }
 
     private static void buildBuilding(ServerWorld world, BlockPos base, int floors, int tier) {
