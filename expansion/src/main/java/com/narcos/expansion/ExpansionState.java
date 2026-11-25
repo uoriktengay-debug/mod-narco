@@ -70,6 +70,10 @@ public final class ExpansionState extends PersistentState {
         return salesByPlayer.getOrDefault(playerId, 0);
     }
 
+    public UUID preferredSupplier(UUID customerId) {
+        return preferredSupplierByCustomer.get(customerId);
+    }
+
     /**
      * Records units successfully sold to a specific villager.
      * A customer starts preferring a supplier at 5 sold units. To take a customer
