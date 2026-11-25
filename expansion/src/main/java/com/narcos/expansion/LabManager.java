@@ -32,25 +32,31 @@ public final class LabManager {
 
         MinecraftServer server = world.getServer();
         ExpansionState data = ExpansionState.of(server);
-        long benchKey = bench.asLong();
+        String labKey = area.key(world);
+        java.util.UUID owner = data.claimOrGetLabOwner(labKey, player.getUuid());
+        if (!owner.equals(player.getUuid())) {
+            player.sendMessage(Text.literal("Эта лаборатория принадлежит другому игроку.")
+                    .formatted(Formatting.RED), false);
+            return;
+        }
 
         if (held.isOf(ExpansionContent.SCIENTIST_CONTRACT)) {
-            int current = data.scientistsAt(benchKey);
+            int current = data.scientistsAt(labKey);
             if (current >= 8) {
                 player.sendMessage(Text.literal("В этой лаборатории уже нанято 8 учёных.")
                         .formatted(Formatting.YELLOW), false);
                 return;
             }
             if (!player.getAbilities().creativeMode) held.decrement(1);
-            current = data.addScientist(benchKey);
-            spawnScientist(world, area, benchKey, current);
+            current = data.addScientist(labKey);
+            spawnScientist(world, area, labKey, current);
             player.sendMessage(Text.literal("Нанят учёный. Всего в лаборатории: " + current + "/8.")
                     .formatted(Formatting.GREEN), false);
             return;
         }
 
         int stations = countWorkstations(world, area);
-        int scientists = data.scientistsAt(benchKey);
+        int scientists = data.scientistsAt(labKey);
         player.sendMessage(Text.literal("Лаборатория размечена: " + area.width() + "×" + area.depth()
                 + " блоков. Учёные: " + scientists + "/8. Рабочие станции: " + stations
                 + " (верстак, печь/коптильня, зельеварка).")
@@ -59,8 +65,9 @@ public final class LabManager {
                 .formatted(Formatting.GRAY), false);
     }
 
-    private static void spawnScientist(ServerWorld world, LabArea area, long benchKey, int desired) {
-        String tag = "narcos_expansion_scientist_" + Long.toUnsignedString(benchKey);
+    private static void spawnScientist(ServerWorld world, LabArea area, String labKey, int desired) {
+        String tag = "narcos_expansion_scientist_" + java.util.UUID.nameUUIDFromBytes(
+                labKey.getBytes(java.nio.charset.StandardCharsets.UTF_8));
         Box box = new Box(area.minX + 1, area.y + 1, area.minZ + 1,
                 area.maxX, area.y + 4, area.maxZ);
         int existing = world.getEntitiesByClass(VillagerEntity.class, box,
@@ -98,7 +105,8 @@ public final class LabManager {
             for (int z = area.minZ + 1; z < area.maxZ; z++) {
                 BlockPos pos = new BlockPos(x, area.y, z);
                 BlockState state = world.getBlockState(pos);
-                if (state.isOf(Blocks.CRAFTING_TABLE) || state.isOf(Blocks.FURNACE)
+                if (state.isOf(Blocks.CRAFTING_TABLE) || state.isOf(ExpansionContent.LAB_BENCH)
+                        || state.isOf(Blocks.FURNACE)
                         || state.isOf(Blocks.SMOKER) || state.isOf(Blocks.BREWING_STAND)
                         || state.isOf(Blocks.BLAST_FURNACE)) {
                     count++;
@@ -125,7 +133,8 @@ public final class LabManager {
         int maxX = markers.stream().mapToInt(BlockPos::getX).max().orElse(bench.getX());
         int minZ = markers.stream().mapToInt(BlockPos::getZ).min().orElse(bench.getZ());
         int maxZ = markers.stream().mapToInt(BlockPos::getZ).max().orElse(bench.getZ());
-        if (maxX - minX < 4 || maxZ - minZ < 4 || maxX - minX > 32 || maxZ - minZ > 32) return null;
+        if (maxX - minX < 4 || maxZ - minZ < 4 || maxX - minX > 32 || maxZ - minZ > 32
+                || maxX - minX != maxZ - minZ) return null;
 
         Set<BlockPos> expected = new HashSet<>();
         expected.add(new BlockPos(minX, y, minZ));
@@ -152,5 +161,10 @@ public final class LabManager {
 
         int width() { return maxX - minX + 1; }
         int depth() { return maxZ - minZ + 1; }
+
+        String key(ServerWorld world) {
+            return world.getRegistryKey().getValue() + "|" + minX + "|" + y + "|" + minZ
+                    + "|" + maxX + "|" + maxZ;
+        }
     }
 }
