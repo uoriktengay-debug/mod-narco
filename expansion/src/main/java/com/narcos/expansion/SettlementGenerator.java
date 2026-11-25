@@ -210,26 +210,32 @@ final class SettlementGenerator {
         int roofY = groundY + floors * 4;
         fill(world, x0 - 1, roofY, z0 - 1, x1 + 1, roofY, z1 + 1, roof);
 
-        // Парапет и крыша с силуэтом жилого дома.
-        for (int x = x0 - 1; x <= x1 + 1; x++) {
-            put(world, x, roofY + 1, z0 - 1, type == SettlementLayout.Type.VILLAGE
-                    ? Blocks.SPRUCE_FENCE : Blocks.IRON_BARS);
-            put(world, x, roofY + 1, z1 + 1, type == SettlementLayout.Type.VILLAGE
-                    ? Blocks.SPRUCE_FENCE : Blocks.IRON_BARS);
-        }
-        for (int z = z0 - 1; z <= z1 + 1; z++) {
-            put(world, x0 - 1, roofY + 1, z, type == SettlementLayout.Type.VILLAGE
-                    ? Blocks.SPRUCE_FENCE : Blocks.IRON_BARS);
-            put(world, x1 + 1, roofY + 1, z, type == SettlementLayout.Type.VILLAGE
-                    ? Blocks.SPRUCE_FENCE : Blocks.IRON_BARS);
-        }
-
+        // Скатные деревянные крыши в селе, плоские крыши и парапеты в городе и столице.
         if (type == SettlementLayout.Type.VILLAGE) {
+            for (int x = x0 - 1; x <= x1 + 1; x++) {
+                for (int step = 0; step < 4; step++) {
+                    putState(world, x, roofY + 1 + step, z0 + step,
+                            Blocks.SPRUCE_STAIRS.getDefaultState().with(StairsBlock.FACING, Direction.SOUTH));
+                    putState(world, x, roofY + 1 + step, z1 - step,
+                            Blocks.SPRUCE_STAIRS.getDefaultState().with(StairsBlock.FACING, Direction.NORTH));
+                }
+                put(world, x, roofY + 5, z0 + 4, Blocks.SPRUCE_PLANKS);
+            }
             put(world, x0 + 4, roofY + 1, z0 + 4, Blocks.CAMPFIRE);
-        } else if (type == SettlementLayout.Type.CAPITAL && floors >= 12) {
-            put(world, x0 + 4, roofY + 1, z0 + 4, Blocks.LIGHTNING_ROD);
         } else {
-            put(world, x0 + 4, roofY + 1, z0 + 4, Blocks.LANTERN);
+            for (int x = x0 - 1; x <= x1 + 1; x++) {
+                put(world, x, roofY + 1, z0 - 1, Blocks.IRON_BARS);
+                put(world, x, roofY + 1, z1 + 1, Blocks.IRON_BARS);
+            }
+            for (int z = z0 - 1; z <= z1 + 1; z++) {
+                put(world, x0 - 1, roofY + 1, z, Blocks.IRON_BARS);
+                put(world, x1 + 1, roofY + 1, z, Blocks.IRON_BARS);
+            }
+            if (type == SettlementLayout.Type.CAPITAL && floors >= 12) {
+                put(world, x0 + 4, roofY + 1, z0 + 4, Blocks.LIGHTNING_ROD);
+            } else {
+                put(world, x0 + 4, roofY + 1, z0 + 4, Blocks.LANTERN);
+            }
         }
 
         // Уличные фонари у крупных зданий.
