@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    {
+      "item": "narcos:precursor"
+    },
+    {
+      "item": "narcos:solvent"
+    },
+    {
+      "item": "minecraft:coal"
+    }
+  ],
+  "result": {
+    "item": "narcos:raw_powder",
+    "count": 2
+  }
+}

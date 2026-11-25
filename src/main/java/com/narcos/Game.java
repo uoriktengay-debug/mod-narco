@@ -5,23 +5,30 @@ import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.narcos.NarcosState.PlayerData;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
+import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
-import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
+import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.fabricmc.fabric.api.event.player.UseEntityCallback;
+import net.minecraft.block.AbstractFurnaceBlock;
+import net.minecraft.block.BlastFurnaceBlock;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
+import net.minecraft.block.CropBlock;
 import net.minecraft.block.PaneBlock;
 import net.minecraft.command.CommandRegistryAccess;
-import net.minecraft.entity.EntityType;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityType;
+import net.minecraft.entity.effect.StatusEffects;
 import net.minecraft.entity.passive.IronGolemEntity;
 import net.minecraft.entity.passive.VillagerEntity;
+import net.minecraft.entity.passive.WanderingTraderEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.player.PlayerInventory;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
+import net.minecraft.particle.ParticleTypes;
 import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.RegistryKeys;
 import net.minecraft.registry.tag.BlockTags;
@@ -35,37 +42,49 @@ import net.minecraft.util.ActionResult;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.Hand;
 import net.minecraft.util.Identifier;
+import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.hit.EntityHitResult;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
+import net.minecraft.village.TradeOffer;
+import net.minecraft.village.TradeOfferList;
 import net.minecraft.world.GameMode;
 import net.minecraft.world.LightType;
 import net.minecraft.world.World;
 
+import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 
-/** Вся игровая логика: розыск, копы, тюрьма, продажа, бизнес. */
+/** Вся игровая логика: розыск, копы, тюрьма, продажа, бизнес, поселения, барыги. */
 public class Game {
-    // ===== Настройки (можно крутить) =====
-    static final int JAIL_TICKS = 20 * 120;   // срок в камере: 2 минуты
-    static final int BAIL_COST = 5;           // залог в изумрудах
-    static final int SQUATS_NEEDED = 30;      // или 30 приседаний
+    // ===== Настройки =====
+    static final int JAIL_TICKS = 20 * 120;      // базовый срок 2 мин (× судимости)
+    static final int BAIL_BASE = 5;              // залог (+5 за каждую судимость)
+    static final int SQUATS_BASE = 30;           // приседания (+20 за судимость)
     static final int COURIER_COST = 8, COURIER_MAX = 8;
     static final int ARTIST_COST = 12, ARTIST_MAX = 10;
     static final int COLOR_COST = 4;
     static final String COP_TAG = "narcos_police";
+    static final String DEALER_TAG = "narcos_dealer";
     static final String[] COLOR_NAMES = {"красный", "синий", "зелёный", "чёрный"};
     static final String[] COLOR_DESC = {
             "цена товара +25%, но розыск растёт на 25% быстрее",
             "розыск растёт на 30% медленнее",
             "доставщики продают на 50% больше",
             "ночью розыск растёт в 2.5 раза медленнее"};
+
+    // Типы местности: 0 глушь, 1 село, 2 город, 3 столица
+    static final String[] TIER_NAMES = {"глушь", "село", "город", "столица"};
+    static final int[] THR = {90, 70, 50, 40};                 // с какого розыска копы реально ловят
+    static final float[] TIER_HEAT = {0.3f, 0.6f, 1.0f, 1.6f}; // как быстро растёт розыск
+    static final float[] TIER_PRICE = {1.0f, 0.8f, 1.0f, 1.4f};
+    static final int[] TIER_MAXSELL = {2, 2, 4, 8};            // сколько штук за один клик
+    static final int[] HOOK_AT = {5, 5, 3, 2};                 // после скольких продаж житель «подсел»
+    static final float[] REFUSE = {0f, 0f, 0.15f, 0.35f};     // шанс отказа (уже есть поставщик)
 
     static NarcosState state;
     static long tick;
@@ -77,10 +96,20 @@ public class Game {
         ServerLifecycleEvents.SERVER_STOPPED.register(s -> state = null);
         ServerTickEvents.END_SERVER_TICK.register(Game::onTick);
         UseEntityCallback.EVENT.register(Game::onUseEntity);
-        // Копы арестовывают, а не бьют
+        UseBlockCallback.EVENT.register(Game::onUseBlock);
         ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity, source, amount) ->
                 !(source.getAttacker() != null && source.getAttacker().getCommandTags().contains(COP_TAG)));
         CommandRegistrationCallback.EVENT.register(Game::commands);
+    }
+
+    // ===================== ПОСЕЛЕНИЯ =====================
+    /** Тип местности по числу жителей вокруг (радиус 64). */
+    static int tierAt(ServerWorld w, Vec3d pos) {
+        int n = w.getEntitiesByClass(VillagerEntity.class, Box.of(pos, 128, 64, 128), e -> true).size();
+        if (n == 0) return 0;
+        if (n < 8) return 1;
+        if (n < 20) return 2;
+        return 3;
     }
 
     // ===================== ТИК =====================
@@ -104,42 +133,64 @@ public class Game {
     static void slowTick(ServerPlayerEntity p, PlayerData d) {
         ServerWorld w = p.getServerWorld();
         boolean has = hasContraband(p);
-        if (d.heat > 0) d.heat = Math.max(0, d.heat - (has ? 1 : 2));
+        int tier = tierAt(w, p.getPos());
+        if (tick % 80 == 0 && d.heat > 0) d.heat = Math.max(0, d.heat - (has ? 1 : 2));
 
-        // Видна ли плантация снаружи?
-        boolean exposed = false;
+        // Что видно и чувствуется снаружи
+        boolean exposed = false, smell = false;
         BlockPos c = p.getBlockPos();
         for (BlockPos pos : BlockPos.iterate(c.add(-8, -4, -8), c.add(8, 4, 8))) {
-            if (w.getBlockState(pos).getBlock() instanceof GreenCropBlock && visible(w, pos.toImmutable())) {
-                exposed = true;
-                break;
-            }
+            BlockState st = w.getBlockState(pos);
+            if (!exposed && st.getBlock() instanceof GreenCropBlock && visible(w, pos.toImmutable())) exposed = true;
+            if (!smell && st.getBlock() instanceof BlastFurnaceBlock && st.get(AbstractFurnaceBlock.LIT)) smell = true;
         }
-        if (exposed) addHeat(p, d, w.isDay() ? 3f : 1.5f);
+        if (exposed) addHeat(p, d, w.isDay() ? 6f : 3f);
+        if (smell) addHeat(p, d, 5f);
+        if (has && w.isDay() && tier >= 2) addHeat(p, d, 1f);
+
+        // Судимость постепенно гасится
+        if (tick % 24000 == 0 && d.record > 0 && d.heat < 10) {
+            d.record--;
+            p.sendMessage(Text.literal("Одна судимость погашена. Осталось: " + d.record).formatted(Formatting.GREEN), false);
+        }
 
         // Полиция
+        int thr = THR[tier];
         List<IronGolemEntity> cops = cops(w, p.getPos(), 48);
-        if (d.heat < 30 || !has) {
+        if (d.heat < thr - 20 || !has) {
             for (IronGolemEntity cop : cops) {
-                if (d.heat < 30) cop.discard();
+                if (d.heat < thr - 20) cop.discard();
                 else cop.setTarget(null);
             }
         } else {
             for (IronGolemEntity cop : cops) cop.setTarget(p);
-            int want = d.heat >= 80 ? 3 : 1;
-            if (d.heat >= 50 && cops.size() < want && tick % 200 == 0) {
+            int want = (d.heat >= 80 ? 3 : 1) + (tier == 3 ? 1 : 0);
+            if (d.heat >= thr && cops.size() < want && tick % 200 == 0) {
                 if (spawnCop(w, p)) {
                     p.sendMessage(Text.literal("Копы заметили тебя!").formatted(Formatting.RED), false);
                 }
             }
         }
 
-        // Шкала розыска
-        if (d.heat > 0 || exposed) {
+        // Барыги
+        List<WanderingTraderEntity> dealers = dealers(w, p.getPos(), 100);
+        for (WanderingTraderEntity dl : dealers) {
+            dl.removeStatusEffect(StatusEffects.INVISIBILITY);
+            if (dl.age > 14000 && w.getClosestPlayer(dl, 24) == null) dl.discard();
+        }
+        if (tick % 600 == 0 && tier >= 1 && dealers.isEmpty() && w.random.nextFloat() < 0.4f) {
+            if (spawnDealer(w, p, tier)) {
+                p.sendMessage(Text.literal("Слухи: поблизости ходит барыга (" + TIER_NAMES[tier] + "). Ищи тёмно-красное имя.").formatted(Formatting.DARK_GRAY), false);
+            }
+        }
+
+        // Шкала
+        if (d.heat > 0 || exposed || smell) {
             int f = Math.min(10, d.heat / 10);
             String bar = "█".repeat(f) + "░".repeat(10 - f);
-            Formatting col = d.heat >= 80 ? Formatting.RED : d.heat >= 50 ? Formatting.GOLD : Formatting.YELLOW;
-            p.sendMessage(Text.literal("Розыск " + bar + " " + d.heat + (exposed ? "  ⚠ плантацию видно!" : "")).formatted(col), true);
+            Formatting col = d.heat >= 80 ? Formatting.RED : d.heat >= THR[tier] ? Formatting.GOLD : Formatting.YELLOW;
+            p.sendMessage(Text.literal("Розыск " + bar + " " + d.heat + " | " + TIER_NAMES[tier]
+                    + (exposed ? " ⚠ плантацию видно" : "") + (smell ? " ☠ вонь из лаборатории" : "")).formatted(col), true);
         }
     }
 
@@ -163,66 +214,121 @@ public class Game {
     }
 
     static void addHeat(ServerPlayerEntity p, PlayerData d, float amount) {
-        float m = 1f;
+        float m = TIER_HEAT[tierAt(p.getServerWorld(), p.getPos())];
         if (d.color == 0) m *= 1.25f;
         if (d.color == 1) m *= 0.7f;
         if (d.color == 3 && !p.getServerWorld().isDay()) m *= 0.4f;
         d.heat = Math.max(0, Math.min(100, d.heat + Math.round(amount * m)));
     }
 
-    // ===================== ПОЛИЦИЯ =====================
+    // ===================== ПОЛИЦИЯ И БАРЫГИ =====================
     static List<IronGolemEntity> cops(ServerWorld w, Vec3d pos, double r) {
         return w.getEntitiesByClass(IronGolemEntity.class, Box.of(pos, r * 2, r * 2, r * 2),
                 e -> e.getCommandTags().contains(COP_TAG));
     }
 
-    static boolean spawnCop(ServerWorld w, ServerPlayerEntity p) {
+    static List<WanderingTraderEntity> dealers(ServerWorld w, Vec3d pos, double r) {
+        return w.getEntitiesByClass(WanderingTraderEntity.class, Box.of(pos, r * 2, r * 2, r * 2),
+                e -> e.getCommandTags().contains(DEALER_TAG));
+    }
+
+    static BlockPos findSpot(ServerWorld w, ServerPlayerEntity p, double minD, double maxD) {
         for (int i = 0; i < 25; i++) {
             double ang = w.random.nextDouble() * Math.PI * 2;
-            double dist = 10 + w.random.nextDouble() * 8;
+            double dist = minD + w.random.nextDouble() * (maxD - minD);
             int x = p.getBlockX() + (int) (Math.cos(ang) * dist);
             int z = p.getBlockZ() + (int) (Math.sin(ang) * dist);
             for (int dy = 3; dy >= -3; dy--) {
                 BlockPos pos = new BlockPos(x, p.getBlockY() + dy, z);
                 if (w.getBlockState(pos.down()).isSolidBlock(w, pos.down())
                         && w.getBlockState(pos).isAir() && w.getBlockState(pos.up()).isAir()
-                        && w.getBlockState(pos.up(2)).isAir()) {
-                    IronGolemEntity cop = EntityType.IRON_GOLEM.create(w);
-                    if (cop == null) return false;
-                    cop.refreshPositionAndAngles(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, 0, 0);
-                    cop.addCommandTag(COP_TAG);
-                    cop.setCustomName(Text.literal("Полицейский").formatted(Formatting.BLUE));
-                    cop.setCustomNameVisible(true);
-                    cop.setPersistent();
-                    cop.setTarget(p);
-                    w.spawnEntity(cop);
-                    return true;
-                }
+                        && w.getBlockState(pos.up(2)).isAir()) return pos;
             }
         }
-        return false;
+        return null;
+    }
+
+    static boolean spawnCop(ServerWorld w, ServerPlayerEntity p) {
+        BlockPos pos = findSpot(w, p, 10, 18);
+        if (pos == null) return false;
+        IronGolemEntity cop = EntityType.IRON_GOLEM.create(w);
+        if (cop == null) return false;
+        cop.refreshPositionAndAngles(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, 0, 0);
+        cop.addCommandTag(COP_TAG);
+        cop.setCustomName(Text.literal("Полицейский").formatted(Formatting.BLUE));
+        cop.setCustomNameVisible(true);
+        cop.setPersistent();
+        cop.setTarget(p);
+        w.spawnEntity(cop);
+        return true;
+    }
+
+    static void offer(TradeOfferList l, int price, Item item, int count) {
+        l.add(new TradeOffer(new ItemStack(Items.EMERALD, price), new ItemStack(item, count), 8, 0, 0.05f));
+    }
+
+    static boolean spawnDealer(ServerWorld w, ServerPlayerEntity p, int tier) {
+        BlockPos pos = findSpot(w, p, 12, 26);
+        if (pos == null) return false;
+        WanderingTraderEntity t = EntityType.WANDERING_TRADER.create(w);
+        if (t == null) return false;
+        t.refreshPositionAndAngles(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, 0, 0);
+        t.addCommandTag(DEALER_TAG);
+        t.addCommandTag("narcos_tier_" + tier);
+        t.setCustomName(Text.literal("Барыга").formatted(Formatting.DARK_RED, Formatting.BOLD));
+        t.setCustomNameVisible(true);
+        t.setPersistent();
+        TradeOfferList l = t.getOffers();
+        l.clear();
+        offer(l, 2, ModContent.HEMP_SEED, 2);
+        offer(l, 3, ModContent.POPPY_SEED, 2);
+        if (tier >= 2) {
+            offer(l, 6, ModContent.GROW_BOOST, 1);
+            offer(l, 8, ModContent.PRECURSOR, 1);
+        }
+        if (tier >= 3) {
+            offer(l, 4, ModContent.SOLVENT, 1);
+        }
+        w.spawnEntity(t);
+        return true;
     }
 
     static void arrestCheck(MinecraftServer s, ServerPlayerEntity p, PlayerData d) {
-        if (d.heat < 50 || !hasContraband(p)) return;
-        if (!cops(p.getServerWorld(), p.getPos(), 3.0).isEmpty()) arrest(s, p, d);
+        if (d.heat < 40 || !hasContraband(p)) return;
+        ServerWorld w = p.getServerWorld();
+        int tier = tierAt(w, p.getPos());
+        if (d.heat < THR[tier]) return;
+        if (!cops(w, p.getPos(), 3.0).isEmpty()) arrest(s, p, d);
     }
 
     // ===================== ТЮРЬМА =====================
     static void arrest(MinecraftServer s, ServerPlayerEntity p, PlayerData d) {
+        int rec = d.record;
         int seized = 0;
         PlayerInventory inv = p.getInventory();
         for (int i = 0; i < inv.size(); i++) {
             ItemStack st = inv.getStack(i);
-            if (st.isIn(ModContent.CONTRABAND)) {
+            boolean seed = rec >= 2 && (st.isOf(ModContent.HEMP_SEED) || st.isOf(ModContent.POPPY_SEED));
+            if (st.isIn(ModContent.CONTRABAND) || seed) {
                 seized += st.getCount();
                 inv.setStack(i, ItemStack.EMPTY);
             }
         }
+        int fine = Math.min(count(p, Items.EMERALD), 3 * (rec + 1));
+        take(p, Items.EMERALD, fine);
+        boolean fired = false;
+        if (rec >= 3) {
+            if (d.couriers > 0) { d.couriers--; fired = true; }
+            if (d.artists > 0) { d.artists--; fired = true; }
+        }
+
         ServerWorld w = p.getServerWorld();
         for (IronGolemEntity cop : cops(w, p.getPos(), 64)) cop.discard();
 
         d.heat = 0;
+        d.record = Math.min(10, rec + 1);
+        d.squatsNeeded = SQUATS_BASE + 20 * rec;
+        d.bailCost = BAIL_BASE + 5 * rec;
         d.rx = p.getX(); d.ry = p.getY(); d.rz = p.getZ();
         d.rdim = w.getRegistryKey().getValue().toString();
         d.prevMode = p.interactionManager.getGameMode().getId();
@@ -230,15 +336,17 @@ public class Game {
         ServerWorld ow = s.getOverworld();
         BlockPos sp = ow.getSpawnPos();
         buildJail(ow, sp.getX(), 250, sp.getZ());
-        d.jailUntil = ow.getTime() + JAIL_TICKS;
+        d.jailUntil = ow.getTime() + (long) JAIL_TICKS * (1 + Math.min(rec, 4));
         squats.put(p.getUuid(), 0);
         sneak.put(p.getUuid(), false);
 
         p.changeGameMode(GameMode.ADVENTURE);
         p.teleport(ow, sp.getX() + 0.5, 251, sp.getZ() + 0.5, 0, 0);
-        p.sendMessage(Text.literal("ТЕБЯ ЗАДЕРЖАЛИ! Изъято товара: " + seized + " шт.").formatted(Formatting.RED, Formatting.BOLD), false);
-        p.sendMessage(Text.literal("Выйти можно: отсидеть 2 минуты, сделать " + SQUATS_NEEDED
-                + " приседаний (Shift) или заплатить залог: /bail (" + BAIL_COST + " изумрудов).").formatted(Formatting.GRAY), false);
+        p.sendMessage(Text.literal("ТЕБЯ ЗАДЕРЖАЛИ! Изъято товара: " + seized + " шт., штраф: " + fine + " изумр.").formatted(Formatting.RED, Formatting.BOLD), false);
+        p.sendMessage(Text.literal("Судимостей: " + d.record + (rec >= 2 ? " (изъяты и семена)" : "")
+                + (fired ? " | часть твоих людей сбежала" : "")).formatted(Formatting.DARK_RED), false);
+        p.sendMessage(Text.literal("Выход: срок " + (JAIL_TICKS * (1 + Math.min(rec, 4)) / 1200) + " мин, или " + d.squatsNeeded
+                + " приседаний (Shift), или /bail (" + d.bailCost + " изумр.).").formatted(Formatting.GRAY), false);
         state.markDirty();
     }
 
@@ -258,10 +366,11 @@ public class Game {
 
     static void jailTick(MinecraftServer s, ServerPlayerEntity p, PlayerData d) {
         UUID id = p.getUuid();
+        int need = d.squatsNeeded > 0 ? d.squatsNeeded : SQUATS_BASE;
         boolean sn = p.isSneaking();
         if (sn && !sneak.getOrDefault(id, false)) {
             int c = squats.merge(id, 1, Integer::sum);
-            if (c >= SQUATS_NEEDED) {
+            if (c >= need) {
                 release(s, p, d, "Ты отработал срок приседаниями.");
                 return;
             }
@@ -274,7 +383,7 @@ public class Game {
                 return;
             }
             p.sendMessage(Text.literal("Камера: " + (left / 20) + " с | приседаний " + squats.getOrDefault(id, 0)
-                    + "/" + SQUATS_NEEDED + " | /bail = " + BAIL_COST + " изумр.").formatted(Formatting.GRAY), true);
+                    + "/" + need + " | /bail = " + (d.bailCost > 0 ? d.bailCost : BAIL_BASE) + " изумр.").formatted(Formatting.GRAY), true);
         }
     }
 
@@ -295,11 +404,27 @@ public class Game {
         if (i == ModContent.POPPY_POD) return 0.8;
         if (i == ModContent.HEMP_PACK) return 3.0;
         if (i == ModContent.POPPY_PACK) return 4.0;
+        if (i == ModContent.RAW_POWDER) return 3.0;
+        if (i == ModContent.CRYSTAL) return 10.0;
         return 0;
     }
 
     static double priceMult(PlayerData d) {
         return (1 + 0.08 * d.artists) * (d.color == 0 ? 1.25 : 1.0);
+    }
+
+    static int getSold(Entity e) {
+        for (String t : e.getCommandTags()) {
+            if (t.startsWith("nsold_")) {
+                try { return Integer.parseInt(t.substring(6)); } catch (Exception ignored) { }
+            }
+        }
+        return 0;
+    }
+
+    static void setSold(Entity e, int n) {
+        for (String t : new ArrayList<>(e.getCommandTags())) if (t.startsWith("nsold_")) e.removeCommandTag(t);
+        e.addCommandTag("nsold_" + n);
     }
 
     static ActionResult onUseEntity(PlayerEntity pl, World w, Hand h, Entity e, EntityHitResult hit) {
@@ -310,16 +435,46 @@ public class Game {
 
         PlayerData d = state.get(p.getUuid());
         if (d.jailUntil > 0) return ActionResult.FAIL;
-        int n = Math.min(4, held.getCount());
-        double total = priceOf(held.getItem()) * n * priceMult(d);
+        ServerWorld sw = p.getServerWorld();
+        int tier = Math.max(1, tierAt(sw, e.getPos()));
+        int sold = getSold(e);
+        boolean hooked = sold >= HOOK_AT[tier];
+        boolean dayHeat = sw.isDay();
+        float baseHeat = (dayHeat ? 14 : 6) + (cops(sw, p.getPos(), 30).isEmpty() ? 0 : 8);
+
+        // Конкуренция: у него уже есть поставщик
+        if (!hooked && sw.random.nextFloat() < REFUSE[tier]) {
+            addHeat(p, d, 3);
+            p.sendMessage(Text.literal("«У меня уже есть свой поставщик.» (" + TIER_NAMES[tier] + ": конкуренция)").formatted(Formatting.GRAY), true);
+            return ActionResult.SUCCESS;
+        }
+
+        int n = Math.min(TIER_MAXSELL[tier] * (hooked ? 2 : 1), held.getCount());
+        double total = priceOf(held.getItem()) * n * priceMult(d) * TIER_PRICE[tier] * (hooked ? 1.4 : 1.0);
         int pay = Math.max(1, (int) Math.round(total));
         held.decrement(n);
         p.getInventory().offerOrDrop(new ItemStack(Items.EMERALD, pay));
+        setSold(e, sold + 1);
+        addHeat(p, d, baseHeat);
+        p.sendMessage(Text.literal("Сбыт (" + TIER_NAMES[tier] + "): " + n + " шт. → " + pay + " изумр."
+                + (hooked ? "  — он на крючке!" : "")).formatted(Formatting.GREEN), true);
+        return ActionResult.SUCCESS;
+    }
 
-        ServerWorld sw = p.getServerWorld();
-        float heat = (sw.isDay() ? 7 : 3) + (cops(sw, p.getPos(), 30).isEmpty() ? 0 : 8);
-        addHeat(p, d, heat);
-        p.sendMessage(Text.literal("Сбыт: " + n + " шт. → " + pay + " изумр.").formatted(Formatting.GREEN), true);
+    /** Стимулятор роста: правый клик по кусту. */
+    static ActionResult onUseBlock(PlayerEntity pl, World w, Hand h, BlockHitResult hit) {
+        ItemStack st = pl.getStackInHand(h);
+        if (!st.isOf(ModContent.GROW_BOOST)) return ActionResult.PASS;
+        BlockPos bp = hit.getBlockPos();
+        BlockState bs = w.getBlockState(bp);
+        if (!(bs.getBlock() instanceof GreenCropBlock crop)) return ActionResult.PASS;
+        int age = bs.get(CropBlock.AGE);
+        if (age >= 7) return ActionResult.FAIL;
+        if (!w.isClient) {
+            w.setBlockState(bp, crop.withAge(Math.min(7, age + 4)), 2);
+            ((ServerWorld) w).spawnParticles(ParticleTypes.HAPPY_VILLAGER, bp.getX() + 0.5, bp.getY() + 0.5, bp.getZ() + 0.5, 10, 0.3, 0.3, 0.3, 0.0);
+            if (!pl.isCreative()) st.decrement(1);
+        }
         return ActionResult.SUCCESS;
     }
 
@@ -341,7 +496,7 @@ public class Game {
         if (sold == 0) return;
         int pay = Math.max(1, (int) Math.round(total * priceMult(d)));
         inv.offerOrDrop(new ItemStack(Items.EMERALD, pay));
-        addHeat(p, d, 2 + (cops(p.getServerWorld(), p.getPos(), 30).isEmpty() ? 0 : 4));
+        addHeat(p, d, 4 + (cops(p.getServerWorld(), p.getPos(), 30).isEmpty() ? 0 : 6));
         p.sendMessage(Text.literal("Доставщики продали " + sold + " шт. → +" + pay + " изумр.").formatted(Formatting.GREEN), false);
     }
 
@@ -389,7 +544,6 @@ public class Game {
         biz.then(color);
         disp.register(biz);
 
-        // для тестов (нужны права оператора)
         disp.register(CommandManager.literal("heat").requires(s -> s.hasPermissionLevel(2))
                 .then(CommandManager.argument("value", IntegerArgumentType.integer(0, 100)).executes(c -> {
                     ServerPlayerEntity p = c.getSource().getPlayerOrThrow();
@@ -404,11 +558,12 @@ public class Game {
             p.sendMessage(Text.literal("Ты не в тюрьме.").formatted(Formatting.GRAY), false);
             return 0;
         }
-        if (count(p, Items.EMERALD) < BAIL_COST) {
-            p.sendMessage(Text.literal("Нужно " + BAIL_COST + " изумрудов для залога.").formatted(Formatting.RED), false);
+        int cost = d.bailCost > 0 ? d.bailCost : BAIL_BASE;
+        if (count(p, Items.EMERALD) < cost) {
+            p.sendMessage(Text.literal("Нужно " + cost + " изумрудов для залога.").formatted(Formatting.RED), false);
             return 0;
         }
-        take(p, Items.EMERALD, BAIL_COST);
+        take(p, Items.EMERALD, cost);
         release(p.getServer(), p, d, "Залог внесён.");
         return 1;
     }
@@ -450,8 +605,10 @@ public class Game {
 
     static int status(ServerPlayerEntity p) {
         PlayerData d = state.get(p.getUuid());
+        int tier = tierAt(p.getServerWorld(), p.getPos());
         p.sendMessage(Text.literal("=== Твой бизнес ===").formatted(Formatting.GOLD), false);
-        p.sendMessage(Text.literal("Розыск: " + d.heat + "/100"), false);
+        p.sendMessage(Text.literal("Розыск: " + d.heat + "/100 | Судимостей: " + d.record), false);
+        p.sendMessage(Text.literal("Ты сейчас: " + TIER_NAMES[tier] + " (копы ловят с розыска " + THR[tier] + ")"), false);
         p.sendMessage(Text.literal("Доставщики: " + d.couriers + "/" + COURIER_MAX + "  (/biz hire courier — " + COURIER_COST + " изумр.)"), false);
         p.sendMessage(Text.literal("Граффитчики: " + d.artists + "/" + ARTIST_MAX + "  (/biz hire artist — " + ARTIST_COST + " изумр.)"), false);
         p.sendMessage(Text.literal("Цвет банды: " + COLOR_NAMES[d.color] + " — " + COLOR_DESC[d.color]), false);

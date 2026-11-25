@@ -26,6 +26,7 @@ public class ModContent {
 
     public static Block HEMP_CROP, POPPY_CROP;
     public static Item HEMP_SEED, HEMP_LEAF, HEMP_PACK, POPPY_SEED, POPPY_POD, POPPY_PACK;
+    public static Item PRECURSOR, SOLVENT, RAW_POWDER, CRYSTAL, GROW_BOOST;
 
     static Identifier id(String path) {
         return new Identifier(ID, path);
@@ -47,6 +48,11 @@ public class ModContent {
         HEMP_PACK = simple("hemp_pack");
         POPPY_POD = simple("poppy_pod");
         POPPY_PACK = simple("poppy_pack");
+        PRECURSOR = simple("precursor");
+        SOLVENT = simple("solvent");
+        RAW_POWDER = simple("raw_powder");
+        CRYSTAL = simple("crystal");
+        GROW_BOOST = simple("grow_boost");
 
         Registry.register(Registries.ITEM_GROUP, id("main"), FabricItemGroup.builder()
                 .icon(() -> new ItemStack(HEMP_PACK))
@@ -54,6 +60,7 @@ public class ModContent {
                 .entries((ctx, e) -> {
                     e.add(HEMP_SEED); e.add(HEMP_LEAF); e.add(HEMP_PACK);
                     e.add(POPPY_SEED); e.add(POPPY_POD); e.add(POPPY_PACK);
+                    e.add(PRECURSOR); e.add(SOLVENT); e.add(RAW_POWDER); e.add(CRYSTAL); e.add(GROW_BOOST);
                 }).build());
 
         // Семена находятся при срубании травы и сборе маков

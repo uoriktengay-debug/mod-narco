@@ -6,5 +6,10 @@
   "item.narcos.poppy_pod": "Poppy Pod",
   "item.narcos.poppy_pack": "Poppy Brick",
   "block.narcos.hemp_crop": "Hemp Plant",
-  "block.narcos.poppy_crop": "Poppy Plant"
+  "block.narcos.poppy_crop": "Poppy Plant",
+  "item.narcos.precursor": "Precursor",
+  "item.narcos.solvent": "Solvent",
+  "item.narcos.raw_powder": "Raw Powder",
+  "item.narcos.crystal": "Crystals",
+  "item.narcos.grow_boost": "Growth Stimulant"
 }

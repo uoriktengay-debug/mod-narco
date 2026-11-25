@@ -6,5 +6,10 @@
   "item.narcos.poppy_pod": "Маковая головка",
   "item.narcos.poppy_pack": "Брикет мака",
   "block.narcos.hemp_crop": "Куст конопли",
-  "block.narcos.poppy_crop": "Мак"
+  "block.narcos.poppy_crop": "Мак",
+  "item.narcos.precursor": "Прекурсор",
+  "item.narcos.solvent": "Растворитель",
+  "item.narcos.raw_powder": "Сырой порошок",
+  "item.narcos.crystal": "Кристаллы",
+  "item.narcos.grow_boost": "Стимулятор роста"
 }

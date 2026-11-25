@@ -11,7 +11,7 @@ import java.util.UUID;
 /** Сохраняемые данные игроков: розыск, бизнес, тюрьма. */
 public class NarcosState extends PersistentState {
     public static class PlayerData {
-        public int heat, couriers, artists, color, prevMode;
+        public int heat, couriers, artists, color, prevMode, record, squatsNeeded, bailCost;
         public long jailUntil;
         public double rx, ry, rz;
         public String rdim = "minecraft:overworld";
@@ -33,6 +33,9 @@ public class NarcosState extends PersistentState {
             c.putInt("artists", d.artists);
             c.putInt("color", d.color);
             c.putInt("prevMode", d.prevMode);
+            c.putInt("record", d.record);
+            c.putInt("squatsNeeded", d.squatsNeeded);
+            c.putInt("bailCost", d.bailCost);
             c.putLong("jailUntil", d.jailUntil);
             c.putDouble("rx", d.rx);
             c.putDouble("ry", d.ry);
@@ -53,6 +56,9 @@ public class NarcosState extends PersistentState {
             d.artists = c.getInt("artists");
             d.color = c.getInt("color");
             d.prevMode = c.getInt("prevMode");
+            d.record = c.getInt("record");
+            d.squatsNeeded = c.getInt("squatsNeeded");
+            d.bailCost = c.getInt("bailCost");
             d.jailUntil = c.getLong("jailUntil");
             d.rx = c.getDouble("rx");
             d.ry = c.getDouble("ry");
