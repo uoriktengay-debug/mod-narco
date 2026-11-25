@@ -15,5 +15,8 @@ jobs:
       - run: gradle build
       - uses: actions/upload-artifact@v4
         with:
-          name: narcos-mod
-          path: build/libs/narcos-1.0.0.jar
+          name: narcos-mods
+          path: |
+            build/libs/narcos-1.0.0.jar
+            expansion/build/libs/narcos-expansion-1.0.0.jar
+          if-no-files-found: error
