@@ -67,7 +67,7 @@ final class BizCommandOverlay {
 
             player.sendMessage(Text.literal("=== Твой бизнес ===").formatted(Formatting.GOLD), false);
             player.sendMessage(Text.literal("Розыск: " + heat + "/100 | Судимостей: " + record), false);
-            player.sendMessage(Text.literal("Курьеры: " + couriers + "/8 | Граффитчики: " + artists + "/10), false);
+            player.sendMessage(Text.literal("Курьеры: " + couriers + "/8 | Граффитчики: " + artists + "/10"), false);
             player.sendMessage(Text.literal("Цвет банды: " + colorName), false);
             player.sendMessage(Text.literal("Найм: /biz hire courier или /biz hire artist")
                     .formatted(Formatting.GRAY), false);
