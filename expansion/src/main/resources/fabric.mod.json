@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "narcos_expansion",
+  "version": "${version}",
+  "name": "Narcos: Expansion",
+  "description": "Дополнительные поселения, районы и многоэтажная застройка для Narcos: Dealer.",
+  "authors": ["You"],
+  "environment": "*",
+  "entrypoints": {
+    "main": ["com.narcos.expansion.NarcosExpansion"]
+  },
+  "depends": {
+    "fabricloader": ">=0.15.0",
+    "minecraft": "~1.20.1",
+    "java": ">=17",
+    "fabric-api": "*",
+    "narcos": "*"
+  }
+}
