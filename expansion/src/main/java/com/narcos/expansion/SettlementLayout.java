@@ -10,7 +10,7 @@ import java.util.Random;
 
 public final class SettlementLayout {
     enum Type {
-        CAPITAL("столица", 42 * 16),
+        CAPITAL("столица", 56 * 16),
         CITY("город", 4 * 16),
         VILLAGE("село", 2 * 16);
 
@@ -40,8 +40,8 @@ public final class SettlementLayout {
         BlockPos spawn = world.getSpawnPos();
         return switch (type) {
             case CAPITAL -> spawn;
-            case CITY -> spawn.add(1800, 0, 0);
-            case VILLAGE -> spawn.add(3000, 0, 0);
+            case CITY -> spawn.add(2400, 0, 0);
+            case VILLAGE -> spawn.add(3800, 0, 0);
         };
     }
 
@@ -102,7 +102,7 @@ public final class SettlementLayout {
                 + distance(pos, village) + " блоков; размер района 64×64.").formatted(Formatting.WHITE), false);
         player.sendMessage(Text.literal("Между столицей и городом: 1800 блоков; между городом и селом: 1200 блоков.")
                 .formatted(Formatting.GRAY), false);
-        player.sendMessage(Text.literal("Площадь столицы примерно в 110 раз больше площади города.")
+        player.sendMessage(Text.literal("Площадь столицы примерно в 196 раз больше площади города.")
                 .formatted(Formatting.AQUA), false);
     }
 }
