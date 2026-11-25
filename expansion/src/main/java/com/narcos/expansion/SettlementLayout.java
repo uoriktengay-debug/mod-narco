@@ -95,12 +95,12 @@ public final class SettlementLayout {
         BlockPos village = center(world, Type.VILLAGE);
 
         player.sendMessage(Text.literal("Столица «" + name(world, Type.CAPITAL) + "» — до неё "
-                + distance(pos, capital) + " блоков; размер района 1344×1344.").formatted(Formatting.WHITE), false);
+                + distance(pos, capital) + " блоков; размер района 1792×1792.").formatted(Formatting.WHITE), false);
         player.sendMessage(Text.literal("Город «" + name(world, Type.CITY) + "» — до него "
                 + distance(pos, city) + " блоков; размер района 128×128.").formatted(Formatting.WHITE), false);
         player.sendMessage(Text.literal("Село «" + name(world, Type.VILLAGE) + "» — до него "
                 + distance(pos, village) + " блоков; размер района 64×64.").formatted(Formatting.WHITE), false);
-        player.sendMessage(Text.literal("Между столицей и городом: 1800 блоков; между городом и селом: 1200 блоков.")
+        player.sendMessage(Text.literal("Между столицей и городом: 2400 блоков; между городом и селом: 1400 блоков.")
                 .formatted(Formatting.GRAY), false);
         player.sendMessage(Text.literal("Площадь столицы примерно в 196 раз больше площади города.")
                 .formatted(Formatting.AQUA), false);
