@@ -44,7 +44,11 @@ final class BizCommandOverlay {
                     return 1;
                 }).build());
 
-        dispatcher.getRoot().removeCommand("biz");
+        if (original != null) {
+            // values() — представление исходной карты Brigadier; удаляем старый узел,
+            // затем регистрируем новый /biz с теми же подкомандами и новым выводом.
+            dispatcher.getRoot().getChildren().remove(original);
+        }
         dispatcher.getRoot().addChild(replacement);
     }
 
