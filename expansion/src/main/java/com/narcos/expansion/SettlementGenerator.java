@@ -63,7 +63,8 @@ final class SettlementGenerator {
                 int surfaceY = world.getTopY(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, x, z) - 1;
                 BlockPos surface = new BlockPos(x, surfaceY, z);
                 BlockState state = world.getBlockState(surface);
-                if (!state.isSolidBlock(world, surface) || !world.getFluidState(surface).isEmpty()) {
+                if (!state.isSolidBlock(world, surface) || !world.getFluidState(surface).isEmpty()
+                        || !isNaturalGround(state)) {
                     return Integer.MIN_VALUE;
                 }
                 min = Math.min(min, surfaceY);
@@ -103,7 +104,8 @@ final class SettlementGenerator {
     private static void placeOnSurface(ServerWorld world, int x, int z, Block block) {
         int y = world.getTopY(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, x, z) - 1;
         BlockPos pos = new BlockPos(x, y, z);
-        if (!world.getFluidState(pos).isEmpty()) return;
+        BlockState surface = world.getBlockState(pos);
+        if (!world.getFluidState(pos).isEmpty() || !isNaturalGround(surface)) return;
         world.setBlockState(pos, block.getDefaultState(), Block.NOTIFY_LISTENERS);
         BlockPos above = pos.up();
         if (world.getBlockState(above).isReplaceable()) {
@@ -254,6 +256,34 @@ final class SettlementGenerator {
         if (villager == null) return;
         villager.refreshPositionAndAngles(x + 0.5, y, z + 0.5, random.nextFloat() * 360f, 0f);
         world.spawnEntity(villager);
+    }
+
+    private static boolean isNaturalGround(BlockState state) {
+        return state.isOf(Blocks.GRASS_BLOCK)
+                || state.isOf(Blocks.DIRT)
+                || state.isOf(Blocks.COARSE_DIRT)
+                || state.isOf(Blocks.ROOTED_DIRT)
+                || state.isOf(Blocks.PODZOL)
+                || state.isOf(Blocks.MYCELIUM)
+                || state.isOf(Blocks.MOSS_BLOCK)
+                || state.isOf(Blocks.MUD)
+                || state.isOf(Blocks.PACKED_MUD)
+                || state.isOf(Blocks.STONE)
+                || state.isOf(Blocks.DEEPSLATE)
+                || state.isOf(Blocks.ANDESITE)
+                || state.isOf(Blocks.DIORITE)
+                || state.isOf(Blocks.GRANITE)
+                || state.isOf(Blocks.TUFF)
+                || state.isOf(Blocks.CALCITE)
+                || state.isOf(Blocks.SAND)
+                || state.isOf(Blocks.RED_SAND)
+                || state.isOf(Blocks.GRAVEL)
+                || state.isOf(Blocks.SNOW_BLOCK)
+                || state.isOf(Blocks.TERRACOTTA)
+                || state.isOf(Blocks.WHITE_TERRACOTTA)
+                || state.isOf(Blocks.ORANGE_TERRACOTTA)
+                || state.isOf(Blocks.YELLOW_TERRACOTTA)
+                || state.isOf(Blocks.BROWN_TERRACOTTA);
     }
 
     private static void fill(ServerWorld world, int x0, int y0, int z0,
